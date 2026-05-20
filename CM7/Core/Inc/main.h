@@ -31,19 +31,6 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-typedef enum{
-	RESET,
-	SET
-} FlagStatus;
-
-typedef enum {
-    JUMP_IDLE = 0,
-    JUMP_CROUCH,
-    JUMP_EXTEND,
-    JUMP_DONE
-} jump_state_t;
-
-#define PI 3.14159265358979323846
 
 /* USER CODE END Includes */
 

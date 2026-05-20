@@ -23,7 +23,6 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <math.h>
-#include "moteus.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -68,9 +67,11 @@ uint8_t rx_buffer [8];
 volatile uint8_t can_received_flag;
 
 float L = 20;
+jump_state_t state;
+float y_target;
 
 static moteus_motor_t* motor;
-FlagStatus JMP_FLAG = RESET;
+JMPFlagStatus JMP_FLAG = JMP_RESET;
 
 /* USER CODE END PV */
 
@@ -182,8 +183,8 @@ Error_Handler();
   }
   
   status = HAL_FDCAN_ConfigGlobalFilter(&hfdcan1,
-		  	  	  	  	  	  	  	  	FDCAN_ACCEPT_IN_RXFIFO0, /* NonMatchingStd */
-										FDCAN_ACCEPT_IN_RX,FIFO0,/* NonMatchingExt */
+		  	  	  	  	  	  	  	  	FDCAN_ACCEPT_IN_RX_FIFO0, /* NonMatchingStd */
+										FDCAN_ACCEPT_IN_RX_FIFO0,/* NonMatchingExt */
 										FDCAN_REJECT_REMOTE,     /* RejectRemoteStd */
 										FDCAN_REJECT_REMOTE);    /* RejectRemoteExt */
   if (status != HAL_OK){
@@ -195,7 +196,7 @@ Error_Handler();
 	  Error_Handler();
   }
 
-  if (HAL_FDCAN_ActivateNotification(&hfdcan1 FDCAN_IT_RX_FIFO0_NEW_MESSAGE,0)){
+  if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE,0)){
 
 	  Error_Handler();
   }
@@ -211,14 +212,23 @@ Error_Handler();
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
-    /* USER CODE END WHILE */
 	  if (JMP_FLAG)
 	  {
-		  JMP_FLAG = RESET;
-		  leg_jump_seq(motor,L); //sends query to motor
+		  JMP_FLAG = JMP_RESET;
+		  state = JUMP_EXTEND;
+		  y_target = -(L-0.05f);
+		  leg_jump_seq(motor,L, state, y_target); //sends query to motor
 
 	  }
+
+	  else {
+		  state = JUMP_DONE;
+		  y_target = -(L+0.05f);
+		  leg_jump_seq(motor,L, state, y_target); //sends query to motor
+	  }
+
+    /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -235,7 +245,7 @@ void SystemClock_Config(void)
 
   /** Supply configuration update enable
   */
-  HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY);
+  HAL_PWREx_ConfigSupply(PWR_SMPS_2V5_SUPPLIES_LDO);
 
   /** Configure the main internal regulator output voltage
   */
@@ -311,11 +321,11 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.DataPrescaler = 1;
   hfdcan1.Init.DataSyncJumpWidth = 8;
   hfdcan1.Init.DataTimeSeg1 = 15;
-  hfdcan1.Init.DataTimeSeg2 = 8;
+  hfdcan1.Init.DataTimeSeg2 = 1;
   hfdcan1.Init.MessageRAMOffset = 0;
   hfdcan1.Init.StdFiltersNbr = 0;
   hfdcan1.Init.ExtFiltersNbr = 1;
-  hfdcan1.Init.RxFifo0ElmtsNbr = 8;
+  hfdcan1.Init.RxFifo0ElmtsNbr = 0;
   hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
   hfdcan1.Init.RxFifo1ElmtsNbr = 0;
   hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_8;
@@ -348,7 +358,7 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -396,12 +406,18 @@ void move_to_position(float target_rev, jump_state_t state)
 {
     moteus_position_cmd_t cmd = MOTEUS_POSITION_CMD_DEFAULT;
     cmd.position = target_rev;
-    cmd.velocity = 1.2f;      // Limit velocity to 1 rev/s
+    cmd.velocity = 3.5f;      // Limit velocity to 3.5 rev/s
+    cmd.accel_limit = 4.0f;
     cmd.max_torque = 2.0f;    // Limit torque to 2 Nm
-
 
     switch (state)
     {
+		case JUMP_IDLE :
+		{
+			cmd.kp_scale = 2.0f;
+			cmd.kd_scale = 0.3f;
+			break;
+		}
     	case JUMP_CROUCH :
     	{
     		cmd.kp_scale = 1.0f;
@@ -410,20 +426,18 @@ void move_to_position(float target_rev, jump_state_t state)
     	}
 		case JUMP_EXTEND :
 		{
-			cmd.kp_scale = 1.0f;
-			cmd.kd_scale = 1.0f;
+			cmd.kp_scale = 3.0f;
+			cmd.kd_scale = 0.05f;
 			break;
 		}
 
 		case JUMP_DONE :
 		{
-			cmd.kp_scale = 1.0f;
-			cmd.kd_scale = 1.0f;
+			cmd.kp_scale = 1.5f;
+			cmd.kd_scale = 0.01f;
 			break;
 		}
-
     }
-
 
     const moteus_result_t* r = moteus_set_position(motor, &cmd);
     if (r) {
@@ -432,13 +446,11 @@ void move_to_position(float target_rev, jump_state_t state)
         printf("Command failed: %s\n", moteus_error_str(motor->last_error));
     }
 
-
-
 }
 
-void leg_jump_seq (moteus_motor_t* motor, float L, jump_state_t state)
+void leg_jump_seq (moteus_motor_t* motor, float L, jump_state_t state, float y_target)
 {
-	moteus_result_t* r = moteus_set_query(motor); //sends query to motor
+	const moteus_result_t* r = moteus_set_query(motor); //sends query to motor
 
 	if (!r) {
 	    printf("Query failed\n");
@@ -450,7 +462,7 @@ void leg_jump_seq (moteus_motor_t* motor, float L, jump_state_t state)
 	//float y_pos = -L * cosf(theta_motor);
 	//const float torque = r -> torque;
 	//theta_motor = (r -> position)*2*PI;
-	float y_target = -(L-0.05f);
+	//float y_target = -(L-0.05f);
 	float theta_motor_new = acosf(y_target/-L);
 	float target_position_motor = theta_motor_new/(2.0f*PI);
 	move_to_position(target_position_motor,state);
