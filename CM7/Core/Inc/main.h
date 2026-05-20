@@ -31,6 +31,23 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "moteus.h"
+
+#define PI 3.14159265358979323846
+
+typedef enum{
+	JUMP_IDLE,
+	JUMP_CROUCH,
+	JUMP_EXTEND,
+	JUMP_DONE
+}jump_state_t;
+
+typedef enum{
+	JMP_RESET,
+	JMP_SET
+}JMPFlagStatus;
+
+void leg_jump_seq (moteus_motor_t* motor, float L, jump_state_t state, float y_target);
 
 /* USER CODE END Includes */
 
