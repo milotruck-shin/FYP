@@ -380,7 +380,7 @@ void HAL_HSEM_FreeCallback(uint32_t SemMask)
 {
       /* Reactivate the HSEM notification for Semaphore JMP */
       HAL_HSEM_ActivateNotification(__HAL_HSEM_SEMID_TO_MASK(HSEM_ID_JMP));
-      JMP_FLAG = SET;
+      JMP_FLAG = JMP_SET;
 
 }
 
