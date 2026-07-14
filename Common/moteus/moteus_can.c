@@ -135,7 +135,27 @@ HAL_StatusTypeDef moteus_can_transmit(FDCAN_HandleTypeDef* hfdcan,
     uint8_t tx_data[64];
     memset(tx_data, 0, sizeof(tx_data));
     memcpy(tx_data, frame->data, frame->len);
+    HAL_StatusTypeDef status;
+    status = HAL_FDCAN_AddMessageToTxFifoQ(hfdcan, &tx_header, tx_data);
 
+    if (status!=HAL_OK)
+    {
+    	uint32_t err = hfdcan->ErrorCode;
+        if (err & HAL_FDCAN_ERROR_FIFO_FULL)
+        {
+            printf("HAL_FDCAN full buffer\r\n");
+        }
+        else if (err & HAL_FDCAN_ERROR_NOT_STARTED)
+        {
+            printf("HAL FDCAN not started.\r\n");
+        }
+
+        FDCAN_ProtocolStatusTypeDef protocolStatus;
+        HAL_FDCAN_GetProtocolStatus(hfdcan, &protocolStatus);
+        printf("BusOff=%d ErrPassive=%d LastErr=%d\r\n",
+               protocolStatus.BusOff, protocolStatus.ErrorPassive, protocolStatus.LastErrorCode);
+
+    }
     return HAL_FDCAN_AddMessageToTxFifoQ(hfdcan, &tx_header, tx_data);
 }
 

@@ -30,16 +30,17 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 /* STM32 HAL includes - user must include appropriate HAL header before this */
-#ifdef STM32H7xx_HAL_FDCAN_H
+#ifdef STM32G4xx_HAL_FDCAN_H
     /* Already included */
 #else
     /* Try to include it - will fail if HAL not configured */
-    #if defined(STM32H755xx) || defined(STM32G441xx) || defined(STM32G471xx) || \
+    #if defined(STM32G431xx) || defined(STM32G441xx) || defined(STM32G471xx) || \
         defined(STM32G473xx) || defined(STM32G474xx) || defined(STM32G483xx) || \
         defined(STM32G484xx) || defined(STM32G491xx) || defined(STM32G4A1xx)
-        #include "stm32h7xx_hal.h"
+        #include "stm32g4xx_hal.h"
     #endif
 #endif
 

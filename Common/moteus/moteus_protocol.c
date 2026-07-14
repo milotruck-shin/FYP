@@ -300,19 +300,19 @@ static int add_query_request(moteus_frame_builder_t* fb, const moteus_query_reso
     if (query == NULL) return 0;
 
     /* Check if we can do a contiguous read of registers 0x00-0x03 (mode, pos, vel, torque) */
-    bool contiguous_0_3 = (query->mode != MOTEUS_RES_IGNORE &&
-                           query->position != MOTEUS_RES_IGNORE &&
+    bool contiguous =     (query->position != MOTEUS_RES_IGNORE &&
                            query->velocity != MOTEUS_RES_IGNORE &&
                            query->torque != MOTEUS_RES_IGNORE &&
-                           query->mode == query->position &&
                            query->position == query->velocity &&
-                           query->velocity == query->torque);
+                           query->velocity == query->torque 
+                          );
 
-    if (contiguous_0_3) {
-        /* Read 4 contiguous registers */
-        moteus_frame_add_byte(fb, moteus_read_opcode(query->mode, 4));
-        moteus_frame_add_byte(fb, 4);
+    if (contiguous) {
+        /* Read 3 contiguous registers */
+        moteus_frame_add_byte(fb, moteus_read_opcode(query->mode, 1));
         moteus_frame_add_byte(fb, MOTEUS_REG_Q_MODE);
+    	moteus_frame_add_byte(fb, moteus_read_opcode(query->position, 3));
+        moteus_frame_add_byte(fb, MOTEUS_REG_Q_POSITION);
     } else {
         /* Read individually */
         if (query->mode != MOTEUS_RES_IGNORE) {
@@ -483,7 +483,7 @@ int moteus_build_position_frame(moteus_can_frame_t* frame,
         uint8_t reg;
         float value;
         moteus_resolution_t res;
-    } fields[6];
+    } fields[8];
     int field_count = 0;
 
     if (cmd_res->position != MOTEUS_RES_IGNORE) {
@@ -518,13 +518,24 @@ int moteus_build_position_frame(moteus_can_frame_t* frame,
     }
     if (cmd_res->max_torque != MOTEUS_RES_IGNORE) {
         fields[field_count].reg = MOTEUS_REG_MAX_TORQUE;
-        fields[field_count].value = isnan(cmd->max_torque) ? 100.0f : cmd->max_torque;
+        fields[field_count].value = isnan(cmd->max_torque) ? 3.0f : cmd->max_torque;
         fields[field_count].res = cmd_res->max_torque;
         field_count++;
     }
-
+    if (cmd_res->velocity_limit != MOTEUS_RES_IGNORE) {
+        fields[field_count].reg = MOTEUS_REG_VELOCITY_LIMIT;
+        fields[field_count].value = isnan(cmd->velocity_limit) ? 10.0f : cmd->velocity_limit;
+        fields[field_count].res = cmd_res->velocity_limit;
+        field_count++;
+    }   
+    if (cmd_res->accel_limit != MOTEUS_RES_IGNORE) {
+        fields[field_count].reg = MOTEUS_REG_ACCEL_LIMIT;
+        fields[field_count].value = isnan(cmd->accel_limit) ? 3.0f : cmd->accel_limit;
+        fields[field_count].res = cmd_res->accel_limit;
+        field_count++;
+    }
     /* Write fields, grouping consecutive fields with same resolution */
-    uint8_t buf[4];
+    uint8_t buf[4];  // largest encoded value is 4 bytes long.
     float scale;
     int i = 0;
     while (i < field_count) {

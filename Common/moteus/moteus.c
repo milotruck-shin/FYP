@@ -278,7 +278,10 @@ static HAL_StatusTypeDef send_query(moteus_motor_t* motor)
 {
     moteus_can_frame_t frame;
     int len = moteus_build_query_frame(&frame, motor->id, &motor->query_res);
-    if (len < 0) return HAL_ERROR;
+    if (len < 0){
+    	printf("No length in building query frame\r\n");
+    	return HAL_ERROR;
+    }
 
     motor->response_received = false;
     motor->tx_count++;

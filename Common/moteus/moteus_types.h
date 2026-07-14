@@ -65,11 +65,11 @@ typedef moteus_query_format_t moteus_query_resolution_t;
  */
 #define MOTEUS_QUERY_FORMAT_DEFAULT { \
     .mode = MOTEUS_RES_INT8,          \
-    .position = MOTEUS_RES_FLOAT,     \
-    .velocity = MOTEUS_RES_FLOAT,     \
-    .torque = MOTEUS_RES_FLOAT,       \
-    .q_current = MOTEUS_RES_IGNORE,   \
-    .d_current = MOTEUS_RES_IGNORE,   \
+    .position = MOTEUS_RES_INT16,     \
+    .velocity = MOTEUS_RES_INT16,     \
+    .torque = MOTEUS_RES_INT16,       \
+    .q_current = MOTEUS_RES_INT16,   \
+    .d_current = MOTEUS_RES_INT16,   \
     .voltage = MOTEUS_RES_INT8,       \
     .temperature = MOTEUS_RES_INT8,   \
     .fault = MOTEUS_RES_INT8          \
@@ -135,16 +135,16 @@ typedef struct {
  * @brief Default position command resolution (float for all)
  */
 #define MOTEUS_POSITION_RESOLUTION_DEFAULT { \
-    .position = MOTEUS_RES_FLOAT,            \
-    .velocity = MOTEUS_RES_FLOAT,            \
-    .feedforward_torque = MOTEUS_RES_FLOAT,  \
+    .position = MOTEUS_RES_INT16,            \
+    .velocity = MOTEUS_RES_INT16,            \
+    .feedforward_torque = MOTEUS_RES_INT16,  \
     .kp_scale = MOTEUS_RES_FLOAT,            \
     .kd_scale = MOTEUS_RES_FLOAT,            \
-    .max_torque = MOTEUS_RES_FLOAT,          \
+    .max_torque = MOTEUS_RES_INT16,          \
     .stop_position = MOTEUS_RES_IGNORE,      \
     .watchdog_timeout = MOTEUS_RES_IGNORE,   \
-    .velocity_limit = MOTEUS_RES_IGNORE,     \
-    .accel_limit = MOTEUS_RES_IGNORE         \
+    .velocity_limit = MOTEUS_RES_INT16,     \
+    .accel_limit = MOTEUS_RES_INT16         \
 }
 
 /**
