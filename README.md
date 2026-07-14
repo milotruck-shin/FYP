@@ -6,6 +6,10 @@ The leg will receive commands through a wireless Bluetooth handheld remote with 
 
 The system operates using three voltage rails: 24 V, 5 V, and 3.3 V. A 240 VAC-to-24 VDC, 16.7 A wall power supply serves as the primary power source, supplying the moteus controller, pneumatic solenoid valve, and a DC-DC buck converter. An LM2596 buck converter steps the 24 V supply down to 5 V, which powers the SYS_SV rail of the STM32G474RE microcontroller, an ESP32, the MCP2562FD CAN transceiver, the TXS0108 logic level shifter, the MPX5010 air pressure sensor, and the external 5 V pull-up circuitry.
 
+### Circuit Topology
+![Circuit Topology](https://github.com/milotruck-shin/FYP/blob/main/electronics/circuit%20topology.png)
+
+for more detailed schematics, refer to **/electronics**
 ## Mechanical
 
 The designed actuator consists of a 1:8 cycloidal gear drive, brushless motor, and a field-oriented controller mounted at the back of the actuator. Due to time constraints, off-the-shelves motors and motor controller will be used instead of custom making these 2 parts. The brushless motor to be used is Eaglepower 8303 90kV brushless drone motors which have 40 poles and could sustain a continuous power of 900W and continuous current of 20A. At idle, the motor draws up to 0.6A at 24V. The motor controller to be used are MJbots’s moteus r4.11 field-oriented-control (FOC) controller. 
