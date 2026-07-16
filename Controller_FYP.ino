@@ -1,5 +1,8 @@
 #include <Bluepad32.h>
 
+#define RX_GPIO 21
+#define TX_GPIO 19
+
 ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
 HardwareSerial SerialPort1(1);
@@ -72,12 +75,20 @@ void processGamepad(ControllerPtr ctl) {
     //  a(), b(), x(), y(), l1(), etc...
 
    if(ctl->buttons() == 0x0001){//X
-      SerialPort1.print(1);
+      SerialPort1.print(1,BIN);
+      SerialPort1.print("\r\n");
+
+    }
+
+    if(ctl->buttons()== 0x0002){
+        SerialPort1.print(2,BIN);
+        SerialPort1.print("\r\n");
+
     }
 
     // Another way to query controller data is by getting the buttons() function.
     // See how the different "dump*" functions dump the Controller info.
-    dumpGamepad(ctl);
+    //dumpGamepad(ctl);
 }
 
 void processControllers() {
@@ -116,7 +127,7 @@ void setup() {
     // By default, it is disabled.
     BP32.enableVirtualDevice(false);
 
-    SerialPort1.begin(115200,SERIAL_8N1,21,19);
+    SerialPort1.begin(115200,SERIAL_8N1,RX_GPIO,TX_GPIO);
 }
 
 // Arduino loop function. Runs in CPU 1.
