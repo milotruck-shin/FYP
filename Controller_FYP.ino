@@ -7,6 +7,9 @@ ControllerPtr myControllers[BP32_MAX_GAMEPADS];
 
 HardwareSerial SerialPort1(1);
 
+static bool prevXState = false;
+static bool prevOState = false;
+
 // This callback gets called any time a new gamepad is connected.
 // Up to 4 gamepads can be connected at the same time.
 void onConnectedController(ControllerPtr ctl) {
@@ -74,18 +77,25 @@ void processGamepad(ControllerPtr ctl) {
     // By query each button individually:
     //  a(), b(), x(), y(), l1(), etc...
 
-   if(ctl->buttons() == 0x0001){//X
-      SerialPort1.print(1,BIN);
-      SerialPort1.print("\r\n");
+   uint16_t buttons = ctl->buttons();
+   bool curXState = (buttons & 0x0001) != 0;
+   bool curOState = (buttons & 0x0002) != 0;
 
+    if (curXState && !prevXState)
+    {
+    SerialPort1.write(1);
+    SerialPort1.print("\r\n");
     }
 
-    if(ctl->buttons()== 0x0002){
-        SerialPort1.print(2,BIN);
-        SerialPort1.print("\r\n");
-
+    if (curOState && !prevOState)
+    {
+    SerialPort1.write(2);
+    SerialPort1.print("\r\n");
     }
 
+    prevXState = curXState;
+    prevOState = curOState;
+      
     // Another way to query controller data is by getting the buttons() function.
     // See how the different "dump*" functions dump the Controller info.
     //dumpGamepad(ctl);
