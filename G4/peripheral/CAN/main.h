@@ -31,28 +31,35 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#define MOTEUS_MAX_MOTORS 8       // Max motors (default: 8)
+#define MOTEUS_SOURCE_ID 0        // CAN source ID (default: 0)
+#define MOTEUS_DEFAULT_TIMEOUT_MS 100  // Blocking timeout (default: 100ms)
+#define MOTEUS_ENABLE_BRS 1       // Enable BRS for 5 Mbps data phase (default: 1)
 #include "moteus.h"
-#include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define MOTEUS_STARTUP_SEQ_CMD { \
 	.position = 0.0f, 			 \
-	.velocity = 3.5f,		\
+	.velocity = 0.0f,		\
 	.feedforward_torque	= 0.0f,	\
 	.kp_scale = 2.0f,		\
 	.kd_scale = 0.03f,		\
-	.max_torque = 6.0f,		\
+	.max_torque = 0.3f,		\
 	.stop_position = __builtin_nanf(""),    \
 	.watchdog_timeout = __builtin_nanf(""), \
-	.velocity_limit = __builtin_nanf(""),   \
-	.accel_limit = 4.0f       \
+	.velocity_limit = 3.0f,   \
+	.accel_limit = 1.5f       \
 }
+
 
 HAL_StatusTypeDef moteus_begin_position(moteus_motor_t* motor,
                                          const moteus_position_cmd_t* cmd);
 
+void motor_stop(void);
 void motor_init(void);
+void print_motor_state(void);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
