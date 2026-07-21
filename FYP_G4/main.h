@@ -35,15 +35,16 @@ extern "C" {
 #include <stdio.h>
 #include <math.h>
 
+
 #define DEFAULT_POS 50
-#define GEAR_RATIO 8
+#define GEAR_RATIO 1.5 // 40 teeth upper pulley. 60 teeth lower pulley
 
 typedef enum{
-	JUMP_STANCE,
-	JUMP_TAKEOFF,
-	JUMP_INAIR,
-	LANDING
-}jump_state_t;
+	STANCE,
+	TAKEOFF,
+	INAIR,
+	BRACE
+}leg_state_t;
 
 typedef enum{
 	JMP_RESET,
@@ -51,45 +52,69 @@ typedef enum{
 }JMPFlagStatus;
 
 #define MOTEUS_POSITION_JMP_CMD { \
-    .position = 0.0f,                 \
-    .velocity = 3.5f,   \
-    .feedforward_torque = 0.0f,       \
-    .kp_scale = 1.0f,                 \
-    .kd_scale = 1.0f,                 \
-    .max_torque = 6.0f, \
-    .stop_position = __builtin_nanf(""),    \
-    .watchdog_timeout = __builtin_nanf(""), \
-    .velocity_limit = __builtin_nanf(""),   \
-    .accel_limit = 4.0f       \
-}
+		.position = 0.0f, 			 \
+		.velocity = 0.0f,		\
+		.feedforward_torque	= 0.0f,	\
+		.kp_scale = 2.0f,		\
+		.kd_scale = 0.03f,		\
+		.max_torque = 0.3f,		\
+		.stop_position = __builtin_nanf(""),    \
+		.watchdog_timeout = __builtin_nanf(""), \
+		.velocity_limit = 3.0f,   \
+		.accel_limit = 1.5f       \
+	}
 
 
 #define MOTEUS_STARTUP_SEQ_CMD { \
 	.position = 0.0f, 			 \
-	.velocity = 3.5f,		\
-	.feedforward_torque		\
+	.velocity = 0.0f,		\
+	.feedforward_torque	= 0.0f,	\
 	.kp_scale = 2.0f,		\
 	.kd_scale = 0.03f,		\
-	.max_torque = 6.0f,		\
+	.max_torque = 2.0f,		\
 	.stop_position = __builtin_nanf(""),    \
 	.watchdog_timeout = __builtin_nanf(""), \
-	.velocity_limit = __builtin_nanf(""),   \
-	.accel_limit = 4.0f       \
+	.velocity_limit = 3.0f,   \
+	.accel_limit = 1.5f       \
 }
 
 #define AP_EVENT   (1 << 0)		//event flag for air pressure, will trigger once the UART receive INT is triggered
-#define POLL_EVENT   (1 << 1)	//event flag for torque query
-#define JMP_EVENT   (1 << 2)	//event flag for jump event
-#define PNEU_EVENT   (1 << 3)	//event flag for pneumatic cylinder release
+#define POS_EVENT   (1 << 1)	//event flag for jump event
+#define PNEU_EVENT   (1 << 2)	//event flag for pneumatic cylinder release
 
-
+//moteus functions
 void motor_init(void);
 void motor_stop(void);
-void JMP_cmd(float target_rev);
-float cosine_rule (float a,float L,float initial_pos); //returns pos in revs
-float inv_cosine_rule (float pos_in_revs, float L,float initial_pos);	//returns distance between joint 1 and end effector
+static inline void JMP_cmd(moteus_motor_t* motor,float target_position_motor)
+{
+    moteus_position_cmd_t cmd = MOTEUS_POSITION_JMP_CMD;
+    cmd.position=target_position_motor;
+    moteus_begin_position(motor, &cmd);
+}
 
-jump_state_t state_supervision(float rate_of_torque, float torque);
+
+//state machine functions
+leg_state_t state_supervision(float rate_of_torque, float torque);
+static leg_state_t lookup_table(float rate_of_torque, float torque);
+
+
+//math functions
+static inline float cosine_rule (float a,float L,float initial_pos)
+{
+	float A_rad = acosf((2*L*L - a*a )/2*L*L);
+	float pos_joint_revs = A_rad / 2*M_PI;
+	float pos_in_revs = pos_joint_revs * GEAR_RATIO + initial_pos;
+	return pos_in_revs;
+}
+
+static inline float inv_cosine_rule (float pos_in_revs, float L,float initial_pos)
+{
+	float pos_joint_revs = (pos_in_revs - initial_pos)/GEAR_RATIO;
+	float A_rad = pos_joint_revs * 2 * M_PI;
+	float a2 = 2*L*L - 2 * L * L *cosf(A_rad);
+	float a = sqrtf(a2);
+	return a;
+}
 
 
 /* USER CODE END Includes */

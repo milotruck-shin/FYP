@@ -45,9 +45,10 @@ ADC_HandleTypeDef hadc2;
 
 FDCAN_HandleTypeDef hfdcan1;
 
-TIM_HandleTypeDef htim5;
+UART_HandleTypeDef hlpuart1;
+UART_HandleTypeDef huart1;
 
-UART_HandleTypeDef huart3;
+TIM_HandleTypeDef htim5;
 
 /* Definitions for APMonitor */
 osThreadId_t APMonitorHandle;
@@ -63,17 +64,10 @@ const osThreadAttr_t Pneu_trigger_attributes = {
   .priority = (osPriority_t) osPriorityRealtime,
   .stack_size = 128 * 4
 };
-/* Definitions for Torque_polling */
-osThreadId_t Torque_pollingHandle;
-const osThreadAttr_t Torque_polling_attributes = {
-  .name = "Torque_polling",
-  .priority = (osPriority_t) osPriorityNormal,
-  .stack_size = 128 * 4
-};
-/* Definitions for JMP_cmd */
-osThreadId_t JMP_cmdHandle;
-const osThreadAttr_t JMP_cmd_attributes = {
-  .name = "JMP_cmd",
+/* Definitions for position_cmd */
+osThreadId_t position_cmdHandle;
+const osThreadAttr_t position_cmd_attributes = {
+  .name = "position_cmd",
   .priority = (osPriority_t) osPriorityHigh,
   .stack_size = 128 * 4
 };
@@ -89,42 +83,60 @@ const osEventFlagsAttr_t leg_state_attributes = {
   .name = "leg_state"
 };
 /* USER CODE BEGIN PV */
-uint8_t UART3_rxBuffer = {0};
-FDCAN_TxHeaderTypeDef tx_header;
-uint8_t tx_data[8] = {0xDE,0xAD,0xBE,0xEF,0x01,0x02,0x03,0x04};
-FDCAN_FilterTypeDef filter;
-FDCAN_RxHeaderTypeDef rx_header;
-uint8_t rx_buffer [8];
-volatile uint8_t can_received_flag;
 
-float L = 0.2;
+
+//UART
+#define RX_BUF_SIZE 8
+char HLPUART1_rxBuffer [RX_BUF_SIZE];
+uint8_t HUART1_rxBuffer;
+
+uint8_t uart_rx_index = 0;
+uint8_t rx_index = 0;
+
+uint8_t rx_data_SERIAL;
+uint8_t rx_data_ESP32;
+
+//FLAGS
+uint8_t command_ready = 0;
+uint8_t uart1_ready = 0;
+static volatile uint8_t stopped = 0;
+
+//button state
+static uint8_t prevState = false;
+
+
+// Leg parameters
+float L = 0.25;
 float y_target;
 float initial_pos;
+static float total_accum_angle;
 volatile float torque;
 uint32_t torque_array[10];
 float rate_of_torque;
-volatile jump_state_t state;
-uint8_t JMP_status = false;
+static volatile leg_state_t currentState = STANCE ;
 
 
 static moteus_motor_t* motor;
 JMPFlagStatus JMP_FLAG = JMP_RESET;
 moteus_position_cmd_t sv_cmd = MOTEUS_POSITION_JMP_CMD;
 
-uint8_t counter=0;
+
+static const moteus_result_t* r;
+static volatile float target_position_motor;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_FDCAN1_Init(void);
-static void MX_USART3_UART_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_ADC2_Init(void);
+static void MX_LPUART1_UART_Init(void);
+static void MX_USART1_UART_Init(void);
 void AP_task(void *argument);
 void Pneu_task(void *argument);
-void Polling_task(void *argument);
-void JMP_task(void *argument);
+void pos_cmd_task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -132,7 +144,20 @@ void JMP_task(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+int __io_putchar(int ch)
+{
+ ITM_SendChar(ch);
+ return(ch);
+}
 
+int _write(int32_t file, uint8_t *ptr, int32_t len)
+{
+	for (int i = 0; i < len; i++)
+    {
+        ITM_SendChar(*ptr++);
+    }
+    return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -165,28 +190,49 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_FDCAN1_Init();
-  MX_USART3_UART_Init();
   MX_TIM5_Init();
   MX_ADC2_Init();
+  MX_LPUART1_UART_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   //STARTUP SEQUENCE
   //config the FDCAN tx headers here, and the filters
+  HAL_Delay(5000);
+
+  //turn on active LOW relay
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+  // pull STBY LOW for FDCAN normal mode MCP2562FD
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+
+  if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, (hfdcan1.Init.DataPrescaler * hfdcan1.Init.DataTimeSeg1), 0U) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
 
   motor_init();
 
-  HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, 16, 0);  // TDCO = DataTimeSeg1 + 1
-  HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1);
-  HAL_UART_Receive_IT(&huart3,UART3_rxBuffer,1);
-
-  const moteus_result_t* r = moteus_set_query(motor); //sends query to motor
-  initial_pos = r->position;
-  float desired_pos = (DEFAULT_POS / 360) * GEAR_RATIO + initial_pos;
-  float max_pos_bounds = (90 / 360) * GEAR_RATIO + initial_pos;
-  float total_accum_angle = desired_pos;
+  HAL_UART_Receive_IT(&huart1,&HUART1_rxBuffer,1);
+  HAL_UART_Receive_IT(&hlpuart1,(uint8_t*)HLPUART1_rxBuffer,1);
 
   moteus_position_cmd_t cmd = MOTEUS_STARTUP_SEQ_CMD;
+
+
+  r = moteus_set_query(motor); //sends query to motor
+  initial_pos = r->position;
+  float desired_pos = (DEFAULT_POS / 360) * GEAR_RATIO + initial_pos;
+  float max_pos_bounds = (120 / 360) * GEAR_RATIO + initial_pos;
+  total_accum_angle = desired_pos;
+
   cmd.position = desired_pos;
   moteus_begin_position(motor, &cmd);
+  HAL_TIM_Base_Start_IT(&htim5);
+
 
   /* USER CODE END 2 */
 
@@ -220,11 +266,8 @@ int main(void)
   /* creation of Pneu_trigger */
   Pneu_triggerHandle = osThreadNew(Pneu_task, NULL, &Pneu_trigger_attributes);
 
-  /* creation of Torque_polling */
-  Torque_pollingHandle = osThreadNew(Polling_task, NULL, &Torque_polling_attributes);
-
-  /* creation of JMP_cmd */
-  JMP_cmdHandle = osThreadNew(JMP_task, NULL, &JMP_cmd_attributes);
+  /* creation of position_cmd */
+  position_cmdHandle = osThreadNew(pos_cmd_task, NULL, &position_cmd_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -253,6 +296,7 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
+
 
 /**
   * @brief System Clock Configuration
@@ -403,6 +447,101 @@ static void MX_FDCAN1_Init(void)
 }
 
 /**
+  * @brief LPUART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_LPUART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN LPUART1_Init 0 */
+
+  /* USER CODE END LPUART1_Init 0 */
+
+  /* USER CODE BEGIN LPUART1_Init 1 */
+
+  /* USER CODE END LPUART1_Init 1 */
+  hlpuart1.Instance = LPUART1;
+  hlpuart1.Init.BaudRate = 115200;
+  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
+  hlpuart1.Init.StopBits = UART_STOPBITS_1;
+  hlpuart1.Init.Parity = UART_PARITY_NONE;
+  hlpuart1.Init.Mode = UART_MODE_TX_RX;
+  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  hlpuart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&hlpuart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&hlpuart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN LPUART1_Init 2 */
+
+  /* USER CODE END LPUART1_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief TIM5 Initialization Function
   * @param None
   * @retval None
@@ -448,67 +587,40 @@ static void MX_TIM5_Init(void)
 }
 
 /**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART3_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART3_Init 0 */
-
-  /* USER CODE END USART3_Init 0 */
-
-  /* USER CODE BEGIN USART3_Init 1 */
-
-  /* USER CODE END USART3_Init 1 */
-  huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
-  huart3.Init.WordLength = UART_WORDLENGTH_8B;
-  huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
-  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart3.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart3, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart3, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART3_Init 2 */
-
-  /* USER CODE END USART3_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);
+
+  /*Configure GPIO pin : PA9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PC12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -527,70 +639,104 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 
 void HAL_UART_RxCpItCallback(UART_HandleTypeDef *huart)
 {
-	if (UART3_rxBuffer == JMP){
 
-		osEventFlagsSet(leg_stateHandle, AP_EVENT);
 
-		UART3_rxBuffer = 0;  //reset value
+	if (huart->Instance == USART1)
+	{
+//			char msg [10];
+//			sprintf(msg, "%02X\r\n", rx_data_ESP32);
+//			HAL_UART_Transmit(&hlpuart1,(uint8_t*)msg,strlen(msg),10);
+		HUART1_rxBuffer = rx_data_ESP32;
+
+		if (HUART1_rxBuffer == 0x01)  // if X button is pressed
+		{
+			if (prevState == false)
+			{
+			  prevState = true;
+			  stopped = 1;
+			  motor_stop();
+
+			  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Motor stopped\r\n", 15, 100);
+			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);
+			}
+
+			else
+			{
+			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+			  target_position_motor= r->position;
+			  stopped = 0;
+			  prevState = false;
+			}
+
+		}
+		else if (HUART1_rxBuffer == 0x02) // if circle button is pressed
+		{
+			  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+			  target_position_motor= r->position;
+			  osEventFlagsSet(leg_stateHandle, AP_EVENT);
+
+		}
+		HUART1_rxBuffer = 0;
+
+		HAL_UART_Receive_IT(huart, (uint8_t *)&rx_data_ESP32, 1);
+
 	}
-
-	HAL_UART_Receive_IT(huart,UART3_rxBuffer,1); //re-arm
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+
+void motor_init(void)
 {
-	osEventFlagsSet(leg_stateHandle,POLL_EVENT);
+    // Initialize CAN peripheral
+    moteus_can_init(&hfdcan1);
 
-}
+    // Create motor instance (ID 1)
+    motor = moteus_init(&hfdcan1, 1);
+    if (!motor) {
+    	char failed_msg[]="Failed to initialize motor\r\n";
+    	HAL_UART_Transmit(&hlpuart1,(uint8_t*)failed_msg,sizeof(failed_msg),10);
+        return;
+    }
 
-void motor_init(void){
+    else
+    {
+    	char sucess_msg[]="Motor Initialised!\r\n";
+    	HAL_UART_Transmit(&hlpuart1,(uint8_t*)sucess_msg,sizeof(sucess_msg),10);
+    }
 
-	//Initialise CAN peripheral
-	moteus_can_init(&hfdcan1);
-
-	//Create motor instance (ID 1)
-	motor = moteus_init(&hfdcan1, 1);
-	if (!motor){
-		printf("Failed to initialise motor\n");
-		return;
-	}
-
-	motor ->timeout_ms = 50;
+    // Optional: reduce timeout for faster failure detection
+    motor->timeout_ms = 100;
 }
 
 void motor_stop(void)
 {
-	HAL_TIM_Base_Stop_IT(&htim5);
     const moteus_result_t* r = moteus_set_stop(motor);
     if (r) {
         printf("Motor stopped.\n");
     }
 }
 
-float cosine_rule (float a,float L,float initial_pos)
+void print_motor_state(void)
 {
-	float A_rad = acosf((2*L*L - a*a )/2*L*L);
-	float pos_joint_revs = A_rad / 2*M_PI;
-	float pos_in_revs = pos_joint_revs * GEAR_RATIO + initial_pos;
-	return pos_in_revs;
+    const moteus_result_t* r = moteus_set_query(motor);
+
+    if (r) {
+        printf("%s, %.3f rev, %.3f rev/s, %.3f Nm, %.1f V, %.1f C, %.1f A, %.1f A\r\n", \
+         		moteus_mode_str(r->mode), r->position, r->velocity ,r->torque,r->voltage,r->temperature, r->q_current, r->d_current );
+//        printf("Mode: %s\r\n", moteus_mode_str(r->mode));
+//        printf("Position: %.3f rev\r\n", r->position);
+//        printf("Velocity: %.3f rev/s\r\n", r->velocity);
+//        printf("Torque: %.3f Nm\r\n", r->torque);
+//        printf("Voltage: %.1f V\r\n", r->voltage);
+//        printf("Temperature: %.1f C\r\n", r->temperature);
+
+        if (r->fault != MOTEUS_FAULT_NONE) {
+            printf("FAULT: %s\r\n", moteus_fault_str(r->fault));
+        }
+    } else {
+        printf("Query failed: %s\r\n", moteus_error_str(motor->last_error));
+    }
 }
 
-float inv_cosine_rule (float pos_in_revs, float L,float initial_pos)
-{
-	float pos_joint_revs = (pos_in_revs - initial_pos)/GEAR_RATIO;
-	float A_rad = pos_joint_revs * 2 * M_PI;
-	float a2 = 2*L*L - 2 * L * L cosf(A_rad);
-	float a = sqrtf(a2);
-	return a;
-}
-
-void JMP_cmd(float target_rev)
-{
-    moteus_position_cmd_t cmd = MOTEUS_POSITION_JMP_CMD;
-    cmd->position=target_rev;
-    moteus_begin_position(motor, &cmd);
-
-}
 
 void apply_torque(float torque_nm)
 {
@@ -604,65 +750,76 @@ void apply_torque(float torque_nm)
     }
 }
 
-jump_state_t state_supervision(float rate_of_torque, float torque)
+static leg_state_t lookup_table(float rate_of_torque, float torque)
 {
-    osMutexAcquire(sv_cmd_mtxHandle, osWaitForever);
-	if (rate_of_torque<0.01f && rate_of_torque>-0.01f && torque > 1.0f && torque < 2.0f)
+
+	if (rate_of_torque<0.05f && torque > 0.5f && torque < 1.3f)
 	{
-		state = JUMP_STANCE;
+		currentState = STANCE;
 	}
 
-	else if (rate_of_torque<0 && torque < 1.0f && state == JUMP_STANCE)
+	else if (rate_of_torque<0 && torque < 1.0f && currentState == STANCE)
 	{
-		state = JUMP_TAKEOFF;
+		currentState = TAKEOFF;
 	}
 
-	else if (rate_of_torque<0.01f && rate_of_torque>-0.01f && torque > -0.5f && torque < 0.5f && state == JUMP_TAKEOFF)
+	else if (rate_of_torque<0.01f && rate_of_torque>-0.01f && torque > -0.1f && torque < 0.1f && currentState == TAKEOFF)
 	{
-		state = JUMP_INAIR;
+		currentState = INAIR;
 	}
 
-	else if (rate_of_torque > 3.0f && torque > 3.0f && state == JUMP_INAIR)
+	else if (rate_of_torque > 3.0f && torque > 3.0f && currentState == INAIR)
 	{
-		state = LANDING;
+		currentState = BRACE;
 	}
 
 
-    switch (state)
+	else if (rate_of_torque < 0.05f && torque > 0.5f && torque < 1.3f && currentState == BRACE)
+	{
+	  currentState = STANCE;
+	}
+
+	return currentState;
+}
+
+leg_state_t state_supervision(float rate_of_torque, float torque)
+{
+	currentState = lookup_table(rate_of_torque, torque);
+
+    switch (currentState)
     {
-		case JUMP_STANCE :
+		case STANCE :
 		{
 			sv_cmd.kp_scale = 2.0f;
 			sv_cmd.kd_scale = 0.3f;
-			return state;
+			return currentState;
 		}
 
-		case JUMP_TAKEOFF :
+		case TAKEOFF :
 		{
 			sv_cmd.kp_scale = 1.5f;
 			sv_cmd.kd_scale = 0.01f;
 			osEventFlagsSet(leg_stateHandle, PNEU_EVENT);
-			return state;
+			return currentState;
 		}
-		case JUMP_INAIR :
+		case INAIR :
 		{
 			sv_cmd.kp_scale = 1.5f;
 			sv_cmd.kd_scale = 0.01f;
-			return state;
+			return currentState;
 		}
-		case LANDING :
+		case BRACE :
 		{
 			sv_cmd.kp_scale = 2.0f;
 			sv_cmd.kd_scale = 0.01f;
-			return state;
+			return currentState;
 		}
 
 		default :
 		{
-			return state;
+			return currentState;
 		}
     }
-    osMutexRelease(sv_cmd_mtxHandle);
 
 }
 
@@ -689,7 +846,6 @@ void AP_task(void *argument)
 
 
 	//finally set the flag for query event
-	osEventFlagsSet(leg_stateHandle, JMP_EVENT);
   }
   /* USER CODE END 5 */
 }
@@ -712,69 +868,45 @@ void Pneu_task(void *argument)
   /* USER CODE END Pneu_task */
 }
 
-/* USER CODE BEGIN Header_Polling_task */
+/* USER CODE BEGIN Header_pos_cmd_task */
 /**
-* @brief Function implementing the Torque_polling thread.
+* @brief Function implementing the position_cmd thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_Polling_task */
-void Polling_task(void *argument)
+/* USER CODE END Header_pos_cmd_task */
+void pos_cmd_task(void *argument)
 {
-  /* USER CODE BEGIN Polling_task */
+  /* USER CODE BEGIN pos_cmd_task */
   /* Infinite loop */
   for(;;)
   {
-    osEventFlagsWait(leg_stateHandle, POLL_EVENT, osFlagsWaitAll,osWaitForever);
-
-    if (!JMP_status)
-    {
-		osMutexAcquire(sv_cmd_mtxHandle, osWaitForever);
-		moteus_begin_query(motor);
-		osMutexRelease(sv_cmd_mtxHandle);
-
+	    osEventFlagsWait(leg_stateHandle,POS_EVENT,osFlagsWaitAll,osWaitForever);
+	    static uint8_t counter = 0;
+	    static float torque_array[10];
+	    //once the flag is set, send command to JUMP and set the flag to start polling continuously.
+	    moteus_begin_query(motor);
+	    r = &motor->result;
+		torque_array[counter++] = r->torque;
+	    osMutexAcquire(sv_cmd_mtxHandle, osWaitForever);
+		if (!stopped)
+		{
+			JMP_cmd(motor,target_position_motor);
+		}
+	    sMutexRelease(sv_cmd_mtxHandle);
 
 		if (counter == 10)
 		{
-			rate_of_torque=(torque_array[9]-torque_array[0]) / (10*0.1f);
-			torque = torque_array[9];
+			float rate_of_torque=(torque_array[9]-torque_array[0]) / (10*0.01f);
+			float torque = torque_array[9];
 			counter = 0;
 			state_supervision(rate_of_torque,torque); //TO BE CHANGED
+
 		}
-		torque_array[counter++] = motor->result.torque;
 
-    }
-  }
-  /* USER CODE END Polling_task */
-}
-
-/* USER CODE BEGIN Header_JMP_task */
-/**
-* @brief Function implementing the JMP_cmd thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_JMP_task */
-void JMP_task(void *argument)
-{
-  /* USER CODE BEGIN JMP_task */
-  /* Infinite loop */
-  for(;;)
-  {
-    osEventFlagsWait(leg_stateHandle,JMP_EVENT,osFlagsWaitAll,osWaitForever);
-
-    //once the flag is set, send command to JUMP and set the flag to start polling continuously.
-    moteus_begin_query(motor);
-    const moteus_result_t* r = &motor->result;
-    torque = r->torque;
-	y_target = -(L+0.05f);
-	float target_position_motor = cosine_rule(y_target,L,initial_pos);
-	JMP_cmd(target_position_motor);
-
-	HAL_TIM_Base_Start_IT(&htim5);
 
   }
-  /* USER CODE END JMP_task */
+  /* USER CODE END pos_cmd_task */
 }
 
 /**
@@ -795,6 +927,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
+	osEventFlagsSet(leg_stateHandle,POS_EVENT);
 
   /* USER CODE END Callback 1 */
 }
