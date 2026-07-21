@@ -45,11 +45,11 @@ ADC_HandleTypeDef hadc1;
 UART_HandleTypeDef hlpuart1;
 
 /* USER CODE BEGIN PV */
-uint16_t AD_RES =  0;
-const float sensorOffset = 200; //in mV
-const float sensitivity = 450; //mv/KPa
-
-char message [10];
+uint16_t ADC_RES =  0;
+const uint32_t sensorOffset = 200.0; //in mV
+const uint32_t sensitivity = 450; //mv/kPa
+const uint32_t absoluteError = 0.26; //kPa
+uint8_t message [64];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,7 +99,7 @@ int main(void)
   MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
   // Calibrate The ADC On Power-Up For Better Accuracy
-  HAL_ADCEx_Calibration_Start(&hadc1);
+  HAL_ADCEx_Calibration_Start(&hadc1,ADC_SINGLE_ENDED);
 
   /* USER CODE END 2 */
 
@@ -112,14 +112,15 @@ int main(void)
 	HAL_ADC_PollForConversion(&hadc1, 100);
 	ADC_RES = HAL_ADC_GetValue(&hadc1);
 
-	float sensorVoltage = (ADC_RES/4095.0f) * 5.0f;
-	float sensorValue = (sensorVoltage-sensorOffset) / sensitivity;
+	float sensorVoltage = ((float)ADC_RES / 4095.0) * 3300.0;
+	float sensorValue = (sensorVoltage-sensorOffset) / sensitivity + absoluteError;
 
-	int len = sprintf(message, "Air pressure : %f", sensorValue);
+	int len = sprintf((char *)message, "Air pressure : %f\r\n", sensorValue);
 	HAL_UART_Transmit(&hlpuart1, (uint8_t*)message, len, 10);
 	HAL_Delay(100);
 
     /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
