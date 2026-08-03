@@ -45,6 +45,8 @@ FDCAN_HandleTypeDef hfdcan1;
 UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart1;
 
+TIM_HandleTypeDef htim2;
+
 /* USER CODE BEGIN PV */
 
 #define RX_BUF_SIZE 64
@@ -62,7 +64,7 @@ uint8_t rx_data_ESP;
 
 float target_position;
 static moteus_motor_t* motor;
-
+uint32_t cmd_timestamp_us = 0;
 
 
 
@@ -74,6 +76,7 @@ static void MX_GPIO_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -129,6 +132,7 @@ int main(void)
   MX_FDCAN1_Init();
   MX_LPUART1_UART_Init();
   MX_USART1_UART_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   // turn on relay, PC12
@@ -156,6 +160,7 @@ int main(void)
   HAL_UART_Receive_IT(&huart1, (uint8_t *)&rx_data_ESP, 1);
 
   cmd.position = 0.0f;  // or whatever your home/default position is
+  HAL_TIM_Base_Start_IT(&htim2);
 
   /* USER CODE END 2 */
 
@@ -171,7 +176,7 @@ int main(void)
 	      // Add this: if user sends "stop", clear fault
 	      if (strncmp(HLPUART1_rxBuffer, "STOP", 4) == 0)
 	      {
-	          motor_stop();
+	    	  motor_stop();
 	          stopped = 1;
 
 	          HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Motor stopped\r\n", 15, 100);
@@ -183,6 +188,7 @@ int main(void)
 	          if (endptr == HLPUART1_rxBuffer) {
 	              HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Invalid parameters\r\n", 20, 100);
 	          } else {
+		          HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
 	              cmd.position = position;
 	              stopped = 0;
 	          }
@@ -204,6 +210,7 @@ int main(void)
 		  }
 		  else if (HUART1_rxBuffer == 0x02)
 		  {
+	          HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
               cmd.position = 0.0;
               stopped = 0;
 		  }
@@ -214,11 +221,12 @@ int main(void)
 
 	  else if (!stopped) {
 	      moteus_begin_position(motor, &cmd);
+          cmd_timestamp_us = get_timestamp_raw() / 2;
 	  }
 
 
-	  HAL_Delay(10);
-	  print_motor_state();
+	  HAL_Delay(1);
+	  print_motor_state(cmd.position);
 
 
     /* USER CODE END WHILE */
@@ -413,6 +421,51 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 84;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -456,6 +509,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == LPUART1)
@@ -507,13 +561,13 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 
 }
 
-void print_motor_state(void)
+void print_motor_state(float command_motor_position)
 {
-    const moteus_result_t* r = moteus_set_query(motor);
+	const moteus_result_t* r = moteus_set_query(motor);
 
     if (r) {
-        printf("%s, %.3f rev, %.3f rev/s, %.3f Nm, %.1f V, %.1f C, %.1f A, %.1f A\r\n", \
-         		moteus_mode_str(r->mode), r->position, r->velocity ,r->torque,r->voltage,r->temperature, r->q_current, r->d_current );
+        printf("%" PRIu32"us,%s, %.3f rev, %.3f rev, %.3f rev/s, %.3f Nm, %.1f V, %.1f C, %.1f A, %.1f A\r\n", \
+        		cmd_timestamp_us,moteus_mode_str(r->mode),command_motor_position, r->position, r->velocity ,r->torque,r->voltage,r->temperature, r->q_current, r->d_current );
 //        printf("Mode: %s\r\n", moteus_mode_str(r->mode));
 //        printf("Position: %.3f rev\r\n", r->position);
 //        printf("Velocity: %.3f rev/s\r\n", r->velocity);
@@ -528,6 +582,38 @@ void print_motor_state(void)
         printf("Query failed: %s\r\n", moteus_error_str(motor->last_error));
     }
 }
+
+void motor_init(void)
+{
+    // Initialize CAN peripheral
+    moteus_can_init(&hfdcan1);
+
+    // Create motor instance (ID 1)
+    motor = moteus_init(&hfdcan1, 2);
+    if (!motor) {
+    	char failed_msg[]="Failed to initialize motor\r\n";
+    	HAL_UART_Transmit(&hlpuart1,(uint8_t*)failed_msg,sizeof(failed_msg),10);
+        return;
+    }
+
+    else
+    {
+    	char sucess_msg[]="Motor Initialised!\r\n";
+    	HAL_UART_Transmit(&hlpuart1,(uint8_t*)sucess_msg,sizeof(sucess_msg),10);
+    }
+
+    // Optional: reduce timeout for faster failure detection
+    motor->timeout_ms = 50;
+}
+
+void motor_stop(void)
+{
+    const moteus_result_t* r = moteus_set_stop(motor);
+    if (r) {
+        printf("Motor stopped.\n");
+    }
+}
+
 
 //void print_motor_state(void)
 //{
@@ -564,36 +650,7 @@ void print_motor_state(void)
 //    }
 //}
 
-void motor_init(void)
-{
-    // Initialize CAN peripheral
-    moteus_can_init(&hfdcan1);
 
-    // Create motor instance (ID 1)
-    motor = moteus_init(&hfdcan1, 1);
-    if (!motor) {
-    	char failed_msg[]="Failed to initialize motor\r\n";
-    	HAL_UART_Transmit(&hlpuart1,(uint8_t*)failed_msg,sizeof(failed_msg),10);
-        return;
-    }
-
-    else
-    {
-    	char sucess_msg[]="Motor Initialised!\r\n";
-    	HAL_UART_Transmit(&hlpuart1,(uint8_t*)sucess_msg,sizeof(sucess_msg),10);
-    }
-
-    // Optional: reduce timeout for faster failure detection
-    motor->timeout_ms = 50;
-}
-
-void motor_stop(void)
-{
-    const moteus_result_t* r = moteus_set_stop(motor);
-    if (r) {
-        printf("Motor stopped.\n");
-    }
-}
 /* USER CODE END 4 */
 
 /**
