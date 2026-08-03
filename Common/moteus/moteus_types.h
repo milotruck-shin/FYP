@@ -65,9 +65,9 @@ typedef moteus_query_format_t moteus_query_resolution_t;
  */
 #define MOTEUS_QUERY_FORMAT_DEFAULT { \
     .mode = MOTEUS_RES_INT8,          \
-    .position = MOTEUS_RES_INT16,     \
-    .velocity = MOTEUS_RES_INT16,     \
-    .torque = MOTEUS_RES_INT16,       \
+    .position = MOTEUS_RES_INT32,     \
+    .velocity = MOTEUS_RES_INT32,     \
+    .torque = MOTEUS_RES_INT32,       \
     .q_current = MOTEUS_RES_INT16,   \
     .d_current = MOTEUS_RES_INT16,   \
     .voltage = MOTEUS_RES_INT8,       \
@@ -135,9 +135,9 @@ typedef struct {
  * @brief Default position command resolution (float for all)
  */
 #define MOTEUS_POSITION_RESOLUTION_DEFAULT { \
-    .position = MOTEUS_RES_INT16,            \
-    .velocity = MOTEUS_RES_INT16,            \
-    .feedforward_torque = MOTEUS_RES_INT16,  \
+    .position = MOTEUS_RES_INT32,            \
+    .velocity = MOTEUS_RES_INT32,            \
+    .feedforward_torque = MOTEUS_RES_INT32,  \
     .kp_scale = MOTEUS_RES_FLOAT,            \
     .kd_scale = MOTEUS_RES_FLOAT,            \
     .max_torque = MOTEUS_RES_INT16,          \
