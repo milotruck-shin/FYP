@@ -84,13 +84,17 @@ void processGamepad(ControllerPtr ctl) {
     if (curXState && !prevXState)
     {
     SerialPort1.write(1);
-    SerialPort1.print("\r\n");
+    Serial.printf("1");
+    Serial.printf("\r\n");
+
     }
 
     if (curOState && !prevOState)
     {
     SerialPort1.write(2);
-    SerialPort1.print("\r\n");
+    Serial.printf("2");
+    Serial.printf("\r\n");
+
     }
 
     prevXState = curXState;
