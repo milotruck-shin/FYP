@@ -153,10 +153,10 @@ HAL_StatusTypeDef moteus_can_transmit(FDCAN_HandleTypeDef* hfdcan,
         FDCAN_ProtocolStatusTypeDef protocolStatus;
         HAL_FDCAN_GetProtocolStatus(hfdcan, &protocolStatus);
         printf("BusOff=%d ErrPassive=%d LastErr=%d\r\n",
-               protocolStatus.BusOff, protocolStatus.ErrorPassive, protocolStatus.LastErrorCode);
+        		(int)protocolStatus.BusOff, (int)protocolStatus.ErrorPassive, (int)protocolStatus.LastErrorCode);
 
     }
-    return HAL_FDCAN_AddMessageToTxFifoQ(hfdcan, &tx_header, tx_data);
+    return status;
 }
 
 /* ============================================================================
