@@ -140,7 +140,7 @@ typedef struct {
     .feedforward_torque = MOTEUS_RES_INT32,  \
     .kp_scale = MOTEUS_RES_FLOAT,            \
     .kd_scale = MOTEUS_RES_FLOAT,            \
-    .max_torque = MOTEUS_RES_INT16,          \
+    .max_torque = MOTEUS_RES_FLOAT,          \
     .stop_position = MOTEUS_RES_IGNORE,      \
     .watchdog_timeout = MOTEUS_RES_IGNORE,   \
     .velocity_limit = MOTEUS_RES_INT16,     \
