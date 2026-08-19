@@ -98,7 +98,7 @@ uint8_t rx_data_ESP;
 float target_position;
 static moteus_motor_t* motor;
 const moteus_result_t* r = NULL;
-uint32_t cmd_timestamp_us = 0;
+volatile float cmd_timestamp_ms = 0;
 moteus_position_cmd_t cmd = MOTEUS_STARTUP_SEQ_CMD;
 
 
@@ -469,7 +469,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 84;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 16777215;
+  htim2.Init.Period = 1200000000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -679,8 +679,8 @@ void print_motor_state(float command_motor_position)
 {
 
     if (r) {
-        printf("%" PRIu32"us,%s, %.3f rev, %.3f rev, %.3f rev/s, %.3f Nm, %.1f V, %.1f C, %.1f A, %.1f A\r\n", \
-        		cmd_timestamp_us,moteus_mode_str(r->mode),command_motor_position, r->position, r->velocity ,r->torque,r->voltage,r->temperature, r->q_current, r->d_current );
+        printf("%.3f ms,%s, %.3f rev, %.3f rev, %.3f rev/s, %.3f Nm, %.1f V, %.1f C, %.1f A, %.1f A\r\n", \
+        		cmd_timestamp_ms,moteus_mode_str(r->mode),command_motor_position, r->position, r->velocity ,r->torque,r->voltage,r->temperature, r->q_current, r->d_current );
 //        printf("Mode: %s\r\n", moteus_mode_str(r->mode));
 //        printf("Position: %.3f rev\r\n", r->position);
 //        printf("Velocity: %.3f rev/s\r\n", r->velocity);
@@ -787,7 +787,7 @@ void CMD_Q(void *argument)
 				  moteus_begin_position(motor, &cmd);
 				  r = moteus_set_query(motor);
 
-				  cmd_timestamp_us = get_timestamp_raw() / 2;
+				  cmd_timestamp_ms = get_timestamp_raw() / (2*1e3);
 				  print_motor_state(cmd.position);
 	      	      osMutexRelease(query_muxHandle);
 
