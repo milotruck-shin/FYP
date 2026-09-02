@@ -34,6 +34,10 @@ The program is fully written in C using STM32HAL API with reference manual. Due 
 At the start of each task, there is a cue to wait for their respective event flag. Tasks that are yet to receive a SET event flag are put in a suspended state. Tasks that are running can be pre-empted by higher priority flag. For example, the CQ_task may be running but once the state machine detects a certain requirement for take-off, Pneumatic event flag will be SET and pre-empt the CQ_task, until the end of the Pneumatic_task routine.
 ## Control Flow
 
+<p align="center">
+  <img src="[YOUR_IMAGE_URL](https://github.com/milotruck-shin/FYP/blob/main/electronics/circuit%20topology.png)" alt="Control Flow of SYS_SV" />
+</p>
+
 In essence, the state machine evaluates the current motor values by observing position, torque and rate of change of torque. It takes the current motor value input and the state and evaluates whether or not there will be a valid transition state, as by logic the robotic leg cannot simply transition from stance to in air, due to the fact a complete jumping phase goes from stance->take-off->in air-> landing.
 
 However, a dummy control flow is implemented in place of the complete control flow for the jumping leg, as the leg is currently unable to operate due to issues with the belt transmission. Nevertheless, the overall control architecture remains similar to the intended implementation, with the main difference being that the state machine is less detailed than that of the complete jumping-leg control with proprioceptive sensing.
