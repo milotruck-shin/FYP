@@ -1,5 +1,7 @@
 # Electronics
-
+<p align="center">
+  <img src="https://github.com/milotruck-shin/FYP/blob/c2e1aaf4a81915556ae63ee3b496cb9ab2830cd0/electronics/Schematic_FYP_2026-08-11.png" alt="Control Flow of SYS_SV" />
+</p>
 The system supervisor (SYS_SV), which is device that overseas all operations is **STM32G474**. This MCU is chosen as it allows a FDCAN kernel clock speed of 170MHz to poll the motor data at high speed to capture the dynamic changes of the leg. The communication protocol between SYS_SV and Moteus controller is CAN-FD with arbitration rate and data rate of 1Mbps and 5Mbps. Position commands and queries are exchanged between these two nodes. 
 The leg will receive commands through a wireless Bluetooth handheld remote with ESP32 as a data proxy to the SYS_SV. ESP32 will transfer UART data to SYS_SV whenever it receives a packet from PS5 controller, which the SYS_SV will handle it in a user-defined ISR function. The pneumatic valve is controlled by a signal pin.
 
@@ -35,7 +37,7 @@ At the start of each task, there is a cue to wait for their respective event fla
 ## Control Flow
 
 <p align="center">
-  <img src="[YOUR_IMAGE_URL](https://github.com/milotruck-shin/FYP/blob/main/electronics/circuit%20topology.png)" alt="Control Flow of SYS_SV" />
+  <img src="https://github.com/milotruck-shin/FYP/blob/c2e1aaf4a81915556ae63ee3b496cb9ab2830cd0/electronics/JMP%20FLOW.drawio.png" alt="Control Flow of SYS_SV" />
 </p>
 
 In essence, the state machine evaluates the current motor values by observing position, torque and rate of change of torque. It takes the current motor value input and the state and evaluates whether or not there will be a valid transition state, as by logic the robotic leg cannot simply transition from stance to in air, due to the fact a complete jumping phase goes from stance->take-off->in air-> landing.
