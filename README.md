@@ -50,7 +50,7 @@ A CAN bit is comprised of 4 segments:
 
 # Software 
 ## Task scheduling
-The program is fully written in C using STM32HAL API with reference manual. Due to STM32G4 MCU only consisting of one processor unit, FreeRTOS is used to schedule the tasks. There are 4 main tasks in this program, each with different priority levels.
+The program is fully written in C using STM32HAL API with reference manual. Due to STM32G4 MCU being a single-core processor, FreeRTOS is used to implement concurrency instead of parallelism. There are 4 main tasks in this program, each with different priority levels.
 
 | Task Name | Priority |
 |----------|--------|
