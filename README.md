@@ -2,10 +2,12 @@
 <p align="center">
   <img src="https://github.com/milotruck-shin/FYP/blob/c2e1aaf4a81915556ae63ee3b496cb9ab2830cd0/electronics/Schematic_FYP_2026-08-11.png" alt="Control Flow of SYS_SV" />
 </p>
-The system supervisor (SYS_SV), which is device that overseas all operations is **STM32G474**. This MCU is chosen as it allows a FDCAN kernel clock speed of 170MHz to poll the motor data at high speed to capture the dynamic changes of the leg. The communication protocol between SYS_SV and Moteus controller is CAN-FD with arbitration rate and data rate of 1Mbps and 5Mbps. Position commands and queries are exchanged between these two nodes. 
-The leg will receive commands through a wireless Bluetooth handheld remote with ESP32 as a data proxy to the SYS_SV. ESP32 will transfer UART data to SYS_SV whenever it receives a packet from PS5 controller, which the SYS_SV will handle it in a user-defined ISR function. The pneumatic valve is controlled by a signal pin.
+The system supervisor (SYS_SV), the device that oversees all operations is **STM32G474**. This MCU is chosen as it allows a FDCAN kernel clock speed of 170MHz to poll the motor data at high speed to capture the dynamic changes of the leg. The communication protocol between SYS_SV and Moteus controller is CAN-FD with arbitration rate and data rate of 1Mbps and 5Mbps. Position commands and queries are exchanged between these two nodes.  
 
-The system operates using two voltage rails: 24 and 5 V. A 240 VAC-to-24 VDC, 16.7 A wall power supply serves as the primary power source, supplying power to the moteus controller, pneumatic solenoid valve, and a DC-DC buck converter. An LM2596 buck converter steps the 24 V supply down to 5 V, which powers the STM32G474RE microcontroller (SYS_SV), ESP32 (BT_MCU), the MCP2562FD CAN transceiver, and the external 5 V pull-up circuitry.
+The leg will receive commands through a wireless Bluetooth handheld remote with ESP32 as a data proxy to the SYS_SV. ESP32 will transfer UART data to SYS_SV whenever it receives a packet from PS5 controller, which the SYS_SV will handle it in a user-defined ISR function. The pneumatic valve is controlled by a signal pin.  
+
+The system operates using two voltage rails: 24 and 5 V. A 240 VAC-to-24 VDC, 16.7 A wall power supply serves as the primary power source, supplying power to the moteus controller, pneumatic solenoid valve, and a DC-DC buck converter. An LM2596 buck converter steps the 24 V supply down to 5 V, which powers the STM32G474RE microcontroller (SYS_SV), ESP32 (BT_MCU), the MCP2562FD CAN transceiver, and the external 5 V pull-up circuitry.  
+
 The total current consumption of the 5 V subsystem was evaluated to ensure it remains within the LM2596's maximum output current rating of 3 A. The estimated current draw consists of approximately 130 mA for the ESP32, 70 mA for the MCP2562FD CAN transceiver, 30 mA for the STM32G474RE operating at 170 MHz and 4.8mA for two external pullup resistors, resulting in a total current of approximately 235 mA. This is well below the buck converter's maximum output current capability, providing substantial headroom for reliable operation. The pneumatic solenoid has a nominal current consumption of 125 mA, while the peak current limit for the moteus controller is determined to be.
 
 
@@ -21,6 +23,30 @@ A CAN bit is comprised of 4 segments:
 - Propagation segment
 - Phase segment 1
 - Phase segment 2
+
+### Nominal Phase (1 Mbps)
+| Params | Value |
+|----------|--------|
+| Prescaler | 1 |
+| TS1 | 112 |
+| TS2 | 57 |
+| SJW | 57 |
+
+### Arbitration Phase (5 Mbps)
+| Params | Value |
+|----------|--------|
+| Prescaler | 1 |
+| TS1 | 22 |
+| TS2 | 11 |
+| SJW | 11 |
+
+> [!NOTE]
+> Sync jump width is the maximum amount of time in time quanta, in which the controller can shorten or lengthen a single bit to stay synchronised with other nodes.
+> General rule of thumb, 
+> 1≤ SJW ≤min⁡(TSEG2)
+
+> [!IMPORTANT]
+> two 120-ohm resistors are placed between CANH and CANL – with one placed at each physical end of the main bus line. These are required for impedance matching to prevent signal reflections at high speeds.
 
 # Software 
 ## Task scheduling
