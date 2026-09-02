@@ -59,9 +59,13 @@ The program is fully written in C using STM32HAL API with reference manual. Due 
 | SM_task | Medium |
 | CQ_task | Low |
 
-At the start of each task, there is a cue to wait for their respective event flag. Tasks that are yet to receive a SET event flag are put in a suspended state. Tasks that are running can be pre-empted by higher priority flag. For example, UART INT will set the UART event flag, and that puts the suspended UART_task in a running state. 
+At the start of each task, there is a cue to wait for their respective event flags. Tasks that are yet to receive a SET event flag are put in a suspended state. Tasks that are running can be preempted by higher priority flag. For example, UART INT will set the UART event flag, and that puts the suspended UART_task in a running state. 
 
 To implement a cascaded control loop, TIM4 is set to 100kHz. Two channels - CH1 and CH2 are configured to trigger an interrupt at 200Hz and 25Hz, respectively. CH1 INT will set the CQ_event flag and CH2 INT will set the SM_event flag.
+
+<p align="center">
+  <img src="https://github.com/milotruck-shin/FYP/blob/4e1f0c91dc3dbcfe285df6f8a11cadd24d5d02ac/electronics/timer%20calculation.png" alt="Timer calculation" />
+</p>
 
 
 ## Control Flow
