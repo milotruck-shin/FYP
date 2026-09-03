@@ -40,7 +40,8 @@ A CAN bit is comprised of 4 segments:
 | TS2 | 11 |
 | SJW | 11 |
 
-![CAN frames](https://github.com/milotruck-shin/FYP/blob/5a55500e834f1c0958500b8d3266d42f1e9dfd79/electronics/CAN%20frames.jpg)
+![CAN frames](https://github.com/milotruck-shin/FYP/blob/896b29942b01c0a611961e5c6fbb0f63fdfdf200/electronics/CAN_oscilloscope.jpg)
+The figure shows a transition from 1Mbps arbitration rate to 5Mbps data rate.
 
 > [!NOTE]
 > Sync jump width is the maximum amount of time in time quanta, in which the controller can shorten or lengthen a single bit to stay synchronised with other nodes.
@@ -51,6 +52,47 @@ A CAN bit is comprised of 4 segments:
 > two 120-ohm resistors are placed between CANH and CANL – with one placed at each physical end of the main bus line. These are required for impedance matching to prevent signal reflections at high speeds.
 
 # Software 
+## Moteus C-API (rev 1.0)
+The custom C-API can be found in FYP/Common/moteus section. 
+
+| File Name | Function |
+|----------|--------|
+| moteus.c | Motor control functions |
+| moteus.h | Motor instance definition & header file of moteus.c |
+| moteus_can.c | CAN config, CAN frame Tx Rx, Callback |
+| moteus_protocol.c | Moteus CAN protocol encoding/decoding implementation |
+| moteus_protocol.h | Header file for protocol.h |
+| moteus_register.h | Moteus register reference |
+| moteus_types.h | Moteus data structure |
+
+
+Replace the FDCAN Rx interrupt weak function with this in main.c
+```
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
+{
+    (void)RxFifo0ITs;
+    moteus_fdcan_rx_callback(hfdcan);
+
+}
+```
+
+Enable delay compensation at User Code Begin 2 section
+```
+  if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan2, (hfdcan2.Init.DataPrescaler * hfdcan2.Init.DataTimeSeg1), 0U) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+```
+
+
+> [!WARNING]
+> Do not assign MOTEUS_RES_IGNORE to accel_limit & velocity_limit in MOTEUS_POSITION_RESOLUTION_DEFAULT structure in Moteus_types.h Doing so may overload the power supply unit.
+
 ## Task scheduling
 The program is fully written in C using STM32HAL API with reference manual. Due to STM32G4 MCU being a single-core processor, FreeRTOS is used to implement concurrency instead of parallelism. There are 4 main tasks in this program, each with different priority levels.
 
@@ -68,7 +110,6 @@ To implement a cascaded control loop, TIM4 is set to 100kHz. Two channels - CH1 
 <p align="center">
   <img src="https://github.com/milotruck-shin/FYP/blob/4e1f0c91dc3dbcfe285df6f8a11cadd24d5d02ac/electronics/timer%20calculation.png" alt="Timer calculation" />
 </p>
-
 
 ## Control Flow
 
