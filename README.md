@@ -66,7 +66,7 @@ The custom C-API can be found in FYP/Common/moteus section.
 | moteus_types.h | Moteus data structure |
 
 
-Replace the FDCAN Rx interrupt weak function with this in main.c
+Replace the FDCAN Rx interrupt weak function with this in main.c:
 ```
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 {
@@ -76,7 +76,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 }
 ```
 
-Enable delay compensation at User Code Begin 2 section
+Enable delay compensation at User Code Begin 2 section:
 ```
   if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan2, (hfdcan2.Init.DataPrescaler * hfdcan2.Init.DataTimeSeg1), 0U) != HAL_OK)
   {
@@ -88,7 +88,8 @@ Enable delay compensation at User Code Begin 2 section
     Error_Handler();
   }
 ```
-
+### Watchdog timeout
+By default moteus r4.11 requires commands to be sent at least every 100ms and keep sending until indefinitely.  In POSITION mode, if there are no commands sent for more than 100ms, the controller will timeout.  Ensure you send that frequently, or increase the timeout duration or disable the timeout. To reset the timeout fault, send moteus_stop() command to reset the controller.
 
 > [!WARNING]
 > Do not assign MOTEUS_RES_IGNORE to accel_limit & velocity_limit in MOTEUS_POSITION_RESOLUTION_DEFAULT structure in Moteus_types.h Doing so may overload the power supply unit.
